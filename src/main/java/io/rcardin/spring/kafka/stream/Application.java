@@ -1,19 +1,14 @@
 package io.rcardin.spring.kafka.stream;
 
-import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.streams.KeyValue;
-import org.apache.kafka.streams.StreamsBuilder;
-import org.apache.kafka.streams.kstream.Consumed;
-import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.Produced;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import org.springframework.kafka.annotation.EnableKafkaStreams;
 
 import java.util.Arrays;
 
-@EnableKafkaStreams
 @SpringBootApplication
 public class Application {
 
@@ -22,15 +17,31 @@ public class Application {
 	}
 
 	@Bean
-	public KStream<String, Long> kStreamWordCounter(StreamsBuilder streamsBuilder) {
-		final KStream<String, Long> wordCountStream = streamsBuilder
-				.stream("words", Consumed.with(Serdes.String(), Serdes.String()))
-				.flatMapValues(word -> Arrays.asList(word.split(" ")))
-				.map(((key, value) -> new KeyValue<>(value, value)))
-				.groupByKey()
-				.count()
-				.toStream();
-		wordCountStream.to("word-counters", Produced.with(Serdes.String(), Serdes.Long()));
-		return wordCountStream;
+	public Queue wordsQueue() {
+		return new Queue("words", true);
+	}
+
+	@Bean
+	public Queue wordCountersQueue() {
+		return new Queue("word-counters", true);
+	}
+
+	@RabbitListener(queuesToDeclare = @org.springframework.amqp.rabbit.annotation.Queue(name = "words", durable = "true"))
+	public void processWord(String word) {
+		String[] words = word.split(" ");
+		for (String w : words) {
+			sendWordCounter(w);
+		}
+	}
+
+	private void sendWordCounter(String word) {
+		// Simulate counting logic
+		Long count = 1L;
+		rabbitTemplate().convertAndSend("word-counters", word + ":" + count);
+	}
+
+	@Bean
+	public RabbitTemplate rabbitTemplate() {
+		return new RabbitTemplate();
 	}
 }
